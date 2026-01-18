@@ -1,31 +1,37 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'firebase_options.dart';
-import 'pages/login_page.dart';
+import 'pages/calendario_page.dart';
+import 'pages/clienti_page.dart';
+import 'pages/impostazioni_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-    print("FIREBASE INIZIALIZZATO CORRETTAMENTE");
-  } catch (e) {
-    print("ERRORE INIZIALIZZAZIONE FIREBASE: $e");
-  }
-  runApp(const IdroApp());
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  runApp(const MyApp());
 }
 
-class IdroApp extends StatelessWidget {
-  const IdroApp({super.key});
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'IdroApp',
-      theme: ThemeData(colorSchemeSeed: Colors.blue, useMaterial3: true),
-      home: const LoginPage(),
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [Locale('it', 'IT')],
+      locale: const Locale('it', 'IT'),
+      initialRoute: '/calendario',
+      routes: {
+        '/calendario': (context) => const CalendarioPage(),
+        '/clienti': (context) => const ClientiPage(),
+        '/impostazioni': (context) => const ImpostazioniPage(),
+      },
     );
   }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/main_drawer.dart';
 import 'clienti_page.dart';
 import 'calendario_page.dart';
 import 'interventi_page.dart';
@@ -10,33 +11,88 @@ class HomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Dashboard Idro"), centerTitle: true),
+      appBar: AppBar(
+        title: const Text("Dashboard Idrocostruzioni"),
+        centerTitle: true,
+        backgroundColor: Colors.blue[100],
+      ),
+      drawer: const MainDrawer(),
       body: GridView.count(
         padding: const EdgeInsets.all(20),
-        crossAxisCount: 2, crossAxisSpacing: 15, mainAxisSpacing: 15,
+        crossAxisCount: 2, // 2 colonne
+        crossAxisSpacing: 15,
+        mainAxisSpacing: 15,
         children: [
-          _homeCard(context, Icons.people, "CLIENTI", Colors.blue, const ClientiPage()),
-          _homeCard(context, Icons.calendar_month, "CALENDARIO", Colors.orange, const CalendarioPage()),
-          _homeCard(context, Icons.build, "INTERVENTI", Colors.green, const ListaInterventiPage()),
-          _homeCard(context, Icons.settings, "IMPOSTAZIONI", Colors.grey, const ImpostazioniPage()),
+          // ---------------------------------------------------------
+          // BLOCCO BOTTONE ANAGRAFICA CLIENTI
+          // ---------------------------------------------------------
+          _buildMenuCard(
+            context, 
+            Icons.people, 
+            "CLIENTI", 
+            Colors.blue, 
+            const ClientiPage()
+          ),
+          
+          // ---------------------------------------------------------
+          // BLOCCO BOTTONE CALENDARIO (AGENDA)
+          // ---------------------------------------------------------
+          _buildMenuCard(
+            context, 
+            Icons.calendar_month, 
+            "CALENDARIO", 
+            Colors.orange, 
+            const CalendarioPage()
+          ),
+
+          // ---------------------------------------------------------
+          // BLOCCO BOTTONE LISTA INTERVENTI
+          // ---------------------------------------------------------
+          _buildMenuCard(
+            context, 
+            Icons.build, 
+            "INTERVENTI", 
+            const Color(0xFF4CAF50), // Verde
+            const InterventiPage()
+          ),
+
+          // ---------------------------------------------------------
+          // BLOCCO BOTTONE IMPOSTAZIONI
+          // ---------------------------------------------------------
+          _buildMenuCard(
+            context, 
+            Icons.settings, 
+            "IMPOSTAZIONI", 
+            Colors.grey, 
+            const ImpostazioniPage()
+          ),
         ],
       ),
     );
   }
 
-  Widget _homeCard(BuildContext context, IconData icon, String label, Color color, Widget page) {
+  // ---------------------------------------------------------
+  // FUNZIONE PER CREARE I BOTTONI DELLA DASHBOARD
+  // ---------------------------------------------------------
+  Widget _buildMenuCard(BuildContext context, IconData icon, String label, Color color, Widget page) {
     return InkWell(
-      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => page)),
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => page),
+        );
+      },
       child: Card(
-        elevation: 4, 
+        elevation: 4,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center, 
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 50, color: color), 
-            const SizedBox(height: 10), 
-            Text(label, style: const TextStyle(fontWeight: FontWeight.bold))
-          ]
-        )
+            Icon(icon, size: 50, color: color),
+            const SizedBox(height: 10),
+            Text(label, style: TextStyle(fontWeight: FontWeight.bold, color: color)),
+          ],
+        ),
       ),
     );
   }

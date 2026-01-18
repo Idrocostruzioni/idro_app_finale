@@ -1,99 +1,106 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
+import '../widgets/main_drawer.dart';
 
-// Questa è la pagina della lista degli interventi
-class ListaInterventiPage extends StatelessWidget {
-  const ListaInterventiPage({super.key});
+class InterventiPage extends StatefulWidget {
+  const InterventiPage({super.key});
 
+  @override
+  State<InterventiPage> createState() => _InterventiPageState();
+}
+
+class _InterventiPageState extends State<InterventiPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Lista Interventi"), backgroundColor: Colors.green),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const SchedaIntervento())),
-        backgroundColor: Colors.green,
-        child: const Icon(Icons.add, color: Colors.white),
+      appBar: AppBar(
+        title: const Text("Lista Interventi"),
+        backgroundColor: Colors.blue[100],
       ),
-      body: ListView(
-        children: [
-          ListTile(
-            leading: const Icon(Icons.build, color: Colors.green),
-            title: const Text("Intervento Esempio"),
-            subtitle: const Text("Oggi - Ore 10:00"),
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const SchedaIntervento())),
-          ),
-        ],
+      drawer: const MainDrawer(),
+      body: StreamBuilder<QuerySnapshot>(
+        // ---------------------------------------------------------
+        // CARICAMENTO TUTTI GLI INTERVENTI (Ordinati per data)
+        // ---------------------------------------------------------
+        stream: FirebaseFirestore.instance
+            .collection('interventi')
+            .orderBy('dataInizio', descending: true)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          
+          return ListView.builder(
+            itemCount: snapshot.data!.docs.length,
+            itemBuilder: (context, index) {
+              var doc = snapshot.data!.docs[index];
+              var data = doc.data() as Map<String, dynamic>;
+              DateTime inizio = (data['dataInizio'] as Timestamp).toDate();
+
+              return Card(
+                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                child: ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(8)),
+                    child: Column(
+                      children: [
+                        Text(DateFormat('dd').format(inizio), style: const TextStyle(fontWeight: FontWeight.bold)),
+                        Text(DateFormat('MMM').format(inizio), style: const TextStyle(fontSize: 10)),
+                      ],
+                    ),
+                  ),
+                  title: Text(data['cliente'] ?? "Cliente ignoto", style: const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text("${data['tipo']} - Staff: ${data['staff'].join(', ')}"),
+                  trailing: const Icon(Icons.chevron_right),
+                  // ---------------------------------------------------------
+                  // AL CLICK SI APRE IL DETTAGLIO
+                  // ---------------------------------------------------------
+                  onTap: () => _mostraDettaglioIntervento(context, data),
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }
-}
 
-// Questa è la SCHEDA DETTAGLIATA che mancava o dava errore
-class SchedaIntervento extends StatefulWidget {
-  const SchedaIntervento({super.key});
-
-  @override
-  State<SchedaIntervento> createState() => _SchedaInterventoState();
-}
-
-class _SchedaInterventoState extends State<SchedaIntervento> {
-  TimeOfDay oraInizio = const TimeOfDay(hour: 08, minute: 30);
-  TimeOfDay oraFine = const TimeOfDay(hour: 10, minute: 30);
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("Dettaglio Intervento")),
-      body: ListView(
+  // ---------------------------------------------------------
+  // FUNZIONE VISUALIZZAZIONE DETTAGLIO (Scheda completa)
+  // ---------------------------------------------------------
+  void _mostraDettaglioIntervento(BuildContext context, Map<String, dynamic> d) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => Container(
         padding: const EdgeInsets.all(20),
-        children: [
-          // SEZIONE ORARIO
-          const Text("PROGRAMMAZIONE ORARIA", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: ListTile(
-                  title: const Text("Inizio"),
-                  subtitle: Text(oraInizio.format(context)),
-                  leading: const Icon(Icons.access_time),
-                  onTap: () async {
-                    TimeOfDay? picked = await showTimePicker(context: context, initialTime: oraInizio);
-                    if (picked != null) setState(() => oraInizio = picked);
-                  },
-                ),
-              ),
-              Expanded(
-                child: ListTile(
-                  title: const Text("Fine"),
-                  subtitle: Text(oraFine.format(context)),
-                  leading: const Icon(Icons.access_time_filled),
-                  onTap: () async {
-                    TimeOfDay? picked = await showTimePicker(context: context, initialTime: oraFine);
-                    if (picked != null) setState(() => oraFine = picked);
-                  },
-                ),
-              ),
-            ],
-          ),
-          const Divider(),
-          
-          // CAMPI TIPOLOGIA E DESCRIZIONE
-          const SizedBox(height: 10),
-          const TextField(decoration: InputDecoration(labelText: "Tipologia Intervento", border: OutlineInputBorder())),
-          const SizedBox(height: 15),
-          const TextField(decoration: InputDecoration(labelText: "Cliente", border: OutlineInputBorder())),
-          const SizedBox(height: 15),
-          const TextField(maxLines: 3, decoration: InputDecoration(labelText: "Note Tecniche / Descrizione", border: OutlineInputBorder())),
-          
-          const SizedBox(height: 30),
-          ElevatedButton.icon(
-            onPressed: () => Navigator.pop(context),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, padding: const EdgeInsets.all(15)),
-            icon: const Icon(Icons.save),
-            label: const Text("SALVA INTERVENTO"),
-          ),
-        ],
+        height: MediaQuery.of(context).size.height * 0.8,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(d['cliente'].toUpperCase(), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.blue)),
+            const Divider(),
+            _infoRow(Icons.calendar_today, "Data:", DateFormat('dd/MM/yyyy HH:mm').format((d['dataInizio'] as Timestamp).toDate())),
+            _infoRow(Icons.build, "Tipo:", d['tipo']),
+            _infoRow(Icons.people, "Staff:", d['staff'].join(', ')),
+            const SizedBox(height: 20),
+            const Text("NOTE / DESCRIZIONE:", style: TextStyle(fontWeight: FontWeight.bold)),
+            Text(d['descrizione'] ?? "Nessuna nota"),
+            const Spacer(),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text("CHIUDI")),
+            )
+          ],
+        ),
       ),
     );
   }
+
+  Widget _infoRow(IconData i, String t, String v) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 8),
+    child: Row(children: [Icon(i, size: 20, color: Colors.grey), const SizedBox(width: 10), Text(t), const SizedBox(width: 10), Text(v, style: const TextStyle(fontWeight: FontWeight.bold))]),
+  );
 }

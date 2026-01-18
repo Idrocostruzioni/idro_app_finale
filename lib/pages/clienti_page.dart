@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../widgets/main_drawer.dart';
 
 class ClientiPage extends StatefulWidget {
   const ClientiPage({super.key});
@@ -24,6 +25,9 @@ class _ClientiPageState extends State<ClientiPage> {
       appBar: AppBar(
         title: const Text("Anagrafica Clienti"),
         backgroundColor: Colors.blue[100],
+        // ---------------------------------------------------------
+        // BARRA DI RICERCA SUPERIORE
+        // ---------------------------------------------------------
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(60),
           child: Padding(
@@ -40,12 +44,20 @@ class _ClientiPageState extends State<ClientiPage> {
             ),
           ),
         ),
+        // ---------------------------------------------------------
       ),
+      
+      drawer: const MainDrawer(),
+
       floatingActionButton: FloatingActionButton(
         onPressed: () => _mostraModulo(context),
         backgroundColor: Colors.blue,
         child: const Icon(Icons.person_add, color: Colors.white),
       ),
+
+      // ---------------------------------------------------------
+      // LISTA CLIENTI DAL DATABASE
+      // ---------------------------------------------------------
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('clienti').orderBy('nome').snapshots(),
         builder: (context, snapshot) {
@@ -78,6 +90,7 @@ class _ClientiPageState extends State<ClientiPage> {
           );
         },
       ),
+      // ---------------------------------------------------------
     );
   }
 
@@ -104,33 +117,59 @@ class _ClientiPageState extends State<ClientiPage> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(idDocumento == null ? "NUOVO CLIENTE" : "SCHEDA CLIENTE", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  
+                  // ---------------------------------------------------------
+                  // BOTTONE ELIMINA CLIENTE
+                  // ---------------------------------------------------------
                   if (idDocumento != null)
                     IconButton(
                       icon: const Icon(Icons.delete_forever, color: Colors.red),
                       onPressed: () => _confermaEliminazione(context, idDocumento),
                     )
+                  // ---------------------------------------------------------
                 ],
               ),
               const SizedBox(height: 15),
               
               if (idDocumento != null) ...[
+                // ---------------------------------------------------------
+                // BLOCCO BOTTONI AZIONE (CHIAMA, WHATSAPP, MAIL, MAPPE)
+                // ---------------------------------------------------------
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     _btnTondo(Icons.phone, Colors.green, () => _faiAzione(Uri(scheme: 'tel', path: dati?['tel']))),
                     _btnTondo(Icons.chat, Colors.teal, () => _faiAzione(Uri.parse("https://wa.me/${dati?['tel']}"))),
                     _btnTondo(Icons.email, Colors.redAccent, () => _faiAzione(Uri(scheme: 'mailto', path: dati?['mail']))),
-                    _btnTondo(Icons.directions, Colors.blue, () => _faiAzione(Uri.parse("https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(dati?['citta'] ?? '')}"))),
+                    _btnTondo(Icons.directions, Colors.blue, () {
+                      final indirizzo = Uri.encodeComponent(dati?['citta'] ?? '');
+                      _faiAzione(Uri.parse("https://www.google.com/maps/search/?api=1&query=$indirizzo"));
+                    }),
                   ],
                 ),
+                // ---------------------------------------------------------
+
                 const SizedBox(height: 15),
+
+                // ---------------------------------------------------------
+                // BOTTONE VEDI STORICO INTERVENTI
+                // ---------------------------------------------------------
                 SizedBox(
                   width: double.infinity,
-                  child: OutlinedButton.icon(onPressed: () {}, icon: const Icon(Icons.history), label: const Text("VEDI STORICO INTERVENTI")),
+                  child: OutlinedButton.icon(
+                    onPressed: () {}, 
+                    icon: const Icon(Icons.history), 
+                    label: const Text("VEDI STORICO INTERVENTI")
+                  ),
                 ),
+                // ---------------------------------------------------------
+
                 const Divider(height: 30),
               ],
 
+              // ---------------------------------------------------------
+              // CAMPI DI TESTO (INPUT DATI)
+              // ---------------------------------------------------------
               _input(codController, "Codice Cliente", Icons.numbers),
               _input(nomeController, "Nome e Cognome", Icons.person),
               _input(telController, "Telefono", Icons.phone),
@@ -143,12 +182,21 @@ class _ClientiPageState extends State<ClientiPage> {
                   Expanded(child: _input(tagController, "Tag", Icons.tag)),
                 ],
               ),
+              // ---------------------------------------------------------
+
               const SizedBox(height: 20),
               
+              // ---------------------------------------------------------
+              // BOTTONE SALVA/MODIFICA SU FIREBASE
+              // ---------------------------------------------------------
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 15)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue, 
+                    foregroundColor: Colors.white, 
+                    padding: const EdgeInsets.symmetric(vertical: 15)
+                  ),
                   onPressed: () async {
                     final map = {
                       'codice': codController.text,
@@ -172,6 +220,7 @@ class _ClientiPageState extends State<ClientiPage> {
                   child: Text(idDocumento == null ? "SALVA CLIENTE" : "MODIFICA CLIENTE"),
                 ),
               ),
+              // ---------------------------------------------------------
               const SizedBox(height: 20),
             ],
           ),
@@ -191,8 +240,8 @@ class _ClientiPageState extends State<ClientiPage> {
           TextButton(
             onPressed: () async {
               await FirebaseFirestore.instance.collection('clienti').doc(id).delete();
-              Navigator.pop(context); // chiude popup
-              Navigator.pop(context); // chiude scheda cliente
+              Navigator.pop(context); 
+              Navigator.pop(context); 
             },
             child: const Text("ELIMINA", style: TextStyle(color: Colors.red)),
           ),
