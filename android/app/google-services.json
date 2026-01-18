@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "449463133541",
+    "project_id": "idroapp-9f4e8",
+    "storage_bucket": "idroapp-9f4e8.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:449463133541:android:22eab52482a267d1c52d8c",
+        "android_client_info": {
+          "package_name": "com.example.idro_app_finale"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBkk05on3cZnbE5TrvHlCloY7fKa0vkBgU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
