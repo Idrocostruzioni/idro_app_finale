@@ -157,7 +157,7 @@ class _StaffPageState extends State<StaffPage> {
                           'ruolo': ruoloScelto,
                           'colore': coloreScelto,
                           'primo_accesso': idDoc == null ? true : false,
-                        };
+                        }; // FIX: Rimosso 'dati?['primo_accesso']' che causava errore
 
                         if (idDoc == null) {
                           await FirebaseFirestore.instance.collection('staff').add(map);

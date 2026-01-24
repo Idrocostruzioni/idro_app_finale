@@ -1,7 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:syncfusion_flutter_calendar/calendar.dart';
-import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:collection/collection.dart';
 import '../widgets/main_drawer.dart';
 
 class CalendarioPage extends StatefulWidget {
@@ -12,245 +14,250 @@ class CalendarioPage extends StatefulWidget {
 }
 
 class _CalendarioPageState extends State<CalendarioPage> {
-  final CalendarController _calendarController = CalendarController();
-  DateTime _dataSelezionata = DateTime.now();
-  
-  // Operatore attivo e colore (predefiniti)
-  String _operatoreVisualizzato = "Luciano";
-  Color _coloreCorrente = Colors.blue;
+  DateTime _focusedDate = DateTime.now();
+  List<Map<String, dynamic>> _staff = [];
+  List<Map<String, dynamic>> _stati = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _calendarController.displayDate = _dataSelezionata;
+    _caricaDatiSupporto();
   }
 
-  // ---------------------------------------------------------
-  // 1. FUNZIONE PER MOSTRARE IL DETTAGLIO QUANDO TOCCHI L'AGENDA
-  // ---------------------------------------------------------
-  void _mostraSchedaDettaglio(BuildContext context, Appointment app) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(20),
+  Future<void> _caricaDatiSupporto() async {
+    try {
+      // Carica lo staff
+      final staffSnapshot = await FirebaseFirestore.instance.collection('staff').orderBy('nome').get();
+      _staff = staffSnapshot.docs.map((doc) => doc.data()).toList();
+
+      // Carica gli stati per i colori
+      final commesseDoc = await FirebaseFirestore.instance.collection('impostazioni').doc('commesse').get();
+      if (commesseDoc.exists && commesseDoc.data() != null) {
+        _stati = List<Map<String, dynamic>>.from(commesseDoc.data()!['stati'] ?? []);
+      }
+    } catch (e) {
+      debugPrint("Errore caricamento dati per calendario: $e");
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Color _getColoreStato(String? statoNome) {
+    if (statoNome == null) return Colors.blueGrey;
+    // FIX: Gestione robusta del colore per evitare crash se lo stato non esiste più
+    final stato = _stati.firstWhereOrNull((s) => s['nome'] == statoNome);
+    if (stato != null && stato['colore'] is int) {
+      return Color(stato['colore']);
+    }
+    return Colors.blueGrey; // Colore di fallback sicuro
+  }
+
+  void _changeWeek(int days) {
+    setState(() {
+      _focusedDate = _focusedDate.add(Duration(days: days));
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // --- CONTROLLO PIATTAFORMA ---
+    // Mostra questa pagina solo su web/desktop. Su mobile mostra un messaggio.
+    final bool isMobile = !kIsWeb && (Platform.isIOS || Platform.isAndroid);
+    if (isMobile) {
+      return Scaffold(
+        appBar: AppBar(title: const Text("Agenda Interventi"), backgroundColor: Colors.blue[100]),
+        drawer: const MainDrawer(),
+        body: const Center(
+          child: Text("L'agenda settimanale non è disponibile su smartphone.\nUsa la Lista Interventi.", textAlign: TextAlign.center),
+        ),
+      );
+    }
+
+    final firstDayOfWeek = _focusedDate.subtract(Duration(days: _focusedDate.weekday - 1));
+    final lastDayOfWeek = firstDayOfWeek.add(const Duration(days: 6));
+
+    final startTimestamp = Timestamp.fromDate(DateTime(firstDayOfWeek.year, firstDayOfWeek.month, firstDayOfWeek.day));
+    final endTimestamp = Timestamp.fromDate(DateTime(lastDayOfWeek.year, lastDayOfWeek.month, lastDayOfWeek.day, 23, 59, 59));
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Agenda Interventi"),
+        backgroundColor: Colors.blue[100],
+      ),
+      drawer: const MainDrawer(),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                _buildWeekNavigator(firstDayOfWeek, lastDayOfWeek),
+                _buildHeaderRow(firstDayOfWeek),
+                Expanded(
+                  child: StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('interventi')
+                        .where('dataInizio', isGreaterThanOrEqualTo: startTimestamp)
+                        .where('dataInizio', isLessThanOrEqualTo: endTimestamp)
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      if (!snapshot.hasData) {
+                        return const Center(child: Text("Nessun dato per questa settimana."));
+                      }
+
+                      final interventi = snapshot.data!.docs;
+
+                      return ListView.builder(
+                        itemCount: _staff.length,
+                        itemBuilder: (context, index) {
+                          final tecnico = _staff[index];
+                          return _buildTechnicianRow(tecnico, interventi, firstDayOfWeek);
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildWeekNavigator(DateTime firstDay, DateTime lastDay) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          IconButton(icon: const Icon(Icons.chevron_left), onPressed: () => _changeWeek(-7)),
+          Column(
+            children: [
+              Text(
+                "Settimana dal ${DateFormat('d MMM', 'it_IT').format(firstDay)} al ${DateFormat('d MMM yyyy', 'it_IT').format(lastDay)}",
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              TextButton(onPressed: () => setState(() => _focusedDate = DateTime.now()), child: const Text("Vai a oggi"))
+            ],
+          ),
+          IconButton(icon: const Icon(Icons.chevron_right), onPressed: () => _changeWeek(7)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeaderRow(DateTime firstDayOfWeek) {
+    // FIX: Riscritto interamente per correggere errori di sintassi e parentesi.
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      decoration: BoxDecoration(
+        color: Colors.grey[200],
+        border: Border(bottom: BorderSide(color: Colors.grey.shade400, width: 2)),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(width: 100, child: Center(child: Text("Tecnico", style: TextStyle(fontWeight: FontWeight.bold)))),
+          ...List.generate(7, (index) {
+            final day = firstDayOfWeek.add(Duration(days: index));
+            return Expanded(
+              child: Column(children: [
+                Text(DateFormat('E', 'it_IT').format(day).toUpperCase(),
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
+                Text(DateFormat('d', 'it_IT').format(day),
+                    style: const TextStyle(fontSize: 14)),
+              ]),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTechnicianRow(Map<String, dynamic> tecnico, List<QueryDocumentSnapshot> allInterventi, DateTime firstDayOfWeek) {
+    // FIX: Riscritto interamente per correggere errori di sintassi e parentesi.
+    return Container(
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade300))),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start, // Allinea le celle all'inizio
+        children: [
+          SizedBox(
+            width: 100,
+            child: Padding(
+              padding: const EdgeInsets.all(4.0),
+              child: Text(tecnico['nome'] ?? 'N/D',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+            ),
+          ),
+          ...List.generate(7, (dayIndex) {
+            final currentDay = firstDayOfWeek.add(Duration(days: dayIndex));
+            final interventiDelGiorno = allInterventi.where((doc) {
+              final data = doc.data() as Map<String, dynamic>;
+              final dataInizio = (data['dataInizio'] as Timestamp?)?.toDate();
+              if (dataInizio == null) return false;
+              return data['tecnico'] == tecnico['nome'] && DateUtils.isSameDay(dataInizio, currentDay);
+            }).toList();
+
+            return Expanded(
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 60),
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(border: Border(left: BorderSide(color: Colors.grey.shade300))),
+                child: Column(children: interventiDelGiorno.map((intervento) => _buildInterventoBox(intervento)).toList()),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInterventoBox(DocumentSnapshot intervento) {
+    final data = intervento.data() as Map<String, dynamic>;
+    final cliente = data['cliente'] ?? 'N/D';
+    final tipo = data['tipo'] ?? 'Nessun tipo';
+    final indirizzo = "${data['via'] ?? ''}, ${data['citta'] ?? ''}";
+    final oraInizio = data['dataInizio'] != null ? DateFormat('HH:mm').format((data['dataInizio'] as Timestamp).toDate()) : '';
+    final oraFine = data['dataFine'] != null ? DateFormat('HH:mm').format((data['dataFine'] as Timestamp).toDate()) : '';
+    final note = data['descrizione'] ?? 'Nessuna nota.';
+
+    return Tooltip(
+      message: note,
+      padding: const EdgeInsets.all(10),
+      margin: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.8),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      textStyle: const TextStyle(color: Colors.white, fontSize: 14),
+      preferBelow: false,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: _getColoreStato(data['stato']).withOpacity(0.3),
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: _getColoreStato(data['stato'])),
+        ),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(app.subject.toUpperCase(), 
-                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blue)),
-            const Divider(height: 30),
-            Row(children: [
-              const Icon(Icons.access_time, size: 20, color: Colors.grey),
-              const SizedBox(width: 10),
-              Text("Orario: ${DateFormat('HH:mm').format(app.startTime)} - ${DateFormat('HH:mm').format(app.endTime)}", 
-                   style: const TextStyle(fontWeight: FontWeight.bold))
-            ]),
-            const SizedBox(height: 15),
-            const Text("NOTE INTERVENTO:", style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 5),
-            Text(app.notes ?? "Nessuna nota inserita"),
-            const SizedBox(height: 30),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text("CHIUDI")),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(child: Text(cliente, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11), overflow: TextOverflow.ellipsis)),
+                Text("$oraInizio - $oraFine", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
+              ],
             ),
+            const SizedBox(height: 4),
+            Text(tipo, style: const TextStyle(fontSize: 10, fontStyle: FontStyle.italic)),
+            const SizedBox(height: 4),
+            Text(indirizzo, style: const TextStyle(fontSize: 10, color: Colors.black54)),
           ],
         ),
       ),
     );
   }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text("Agenda: $_operatoreVisualizzato"),
-        backgroundColor: Colors.blue[100],
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.calendar_month),
-            onPressed: () async {
-              final d = await showDatePicker(context: context, initialDate: _dataSelezionata, firstDate: DateTime(2025), lastDate: DateTime(2030));
-              if (d != null) setState(() { _dataSelezionata = d; _calendarController.displayDate = d; });
-            },
-          ),
-          // SELETTORE OPERATORE (Menu in alto a destra)
-          StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance.collection('staff').snapshots(),
-            builder: (context, snapshot) {
-              if (!snapshot.hasData) return const SizedBox();
-              return PopupMenuButton<DocumentSnapshot>(
-                icon: const Icon(Icons.people_alt),
-                onSelected: (doc) => setState(() {
-                  _operatoreVisualizzato = doc['nome'];
-                  _coloreCorrente = Color(doc['colore']);
-                }),
-                itemBuilder: (context) => snapshot.data!.docs.map((doc) => 
-                  PopupMenuItem(value: doc, child: Text(doc['nome']))).toList(),
-              );
-            },
-          )
-        ],
-      ),
-      drawer: const MainDrawer(),
-      body: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            child: Text(DateFormat('MMMM yyyy', 'it').format(_dataSelezionata).toUpperCase(),
-                style: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold, fontSize: 18)),
-          ),
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance.collection('interventi')
-                  .where('staff', arrayContains: _operatoreVisualizzato)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) return const Center(child: Text("Errore dati"));
-                
-                return SfCalendar(
-                  controller: _calendarController,
-                  view: CalendarView.day,
-                  headerHeight: 0,
-                  dataSource: _getCalendarDataSource(snapshot.data),
-                  timeSlotViewSettings: const TimeSlotViewSettings(startHour: 8, endHour: 19, timeIntervalHeight: 150),
-                  onTap: (CalendarTapDetails details) {
-                    if (details.appointments != null && details.appointments!.isNotEmpty) {
-                      _mostraSchedaDettaglio(context, details.appointments![0]);
-                    }
-                  },
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.large(
-        onPressed: () => _mostraModuloInserimento(context),
-        backgroundColor: Colors.blue[900],
-        child: const Icon(Icons.add, color: Colors.white, size: 40),
-      ),
-    );
-  }
-
-  // ---------------------------------------------------------
-  // 2. LOGICA RECUPERO DATI DA FIREBASE (EVITA ERRORI CAMPI MANCANTI)
-  // ---------------------------------------------------------
-  _AppointmentDataSource _getCalendarDataSource(QuerySnapshot? snapshot) {
-    List<Appointment> list = [];
-    if (snapshot != null) {
-      for (var doc in snapshot.docs) {
-        final data = doc.data() as Map<String, dynamic>;
-        if (data.containsKey('dataInizio') && data['dataInizio'] != null) {
-          list.add(Appointment(
-            startTime: (data['dataInizio'] as Timestamp).toDate(),
-            endTime: (data['dataFine'] as Timestamp).toDate(),
-            subject: "${data['cliente']} - ${data['tipo']}",
-            notes: data['descrizione'] ?? "",
-            color: _coloreCorrente,
-          ));
-        }
-      }
-    }
-    return _AppointmentDataSource(list);
-  }
-
-  // ---------------------------------------------------------
-  // 3. MODULO PER AGGIUNGERE UN NUOVO INTERVENTO
-  // ---------------------------------------------------------
-  void _mostraModuloInserimento(BuildContext context) {
-    String? clienteSelezionato;
-    String? tipoScelto;
-    final descController = TextEditingController();
-    List<String> operatoriScelti = [_operatoreVisualizzato];
-    TimeOfDay oraInizio = const TimeOfDay(hour: 9, minute: 0);
-    TimeOfDay oraFine = const TimeOfDay(hour: 11, minute: 0);
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 20, right: 20, top: 20),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text("NUOVO APPUNTAMENTO", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                const SizedBox(height: 20),
-                
-                // Ricerca Cliente
-                Autocomplete<String>(
-                  optionsBuilder: (TextEditingValue textValue) async {
-                    if (textValue.text.isEmpty) return const Iterable.empty();
-                    final snapshot = await FirebaseFirestore.instance.collection('clienti').get();
-                    return snapshot.docs
-                        .map((doc) => doc.data()['nome'].toString())
-                        .where((nome) => nome.toLowerCase().contains(textValue.text.toLowerCase()));
-                  },
-                  onSelected: (String s) => setModalState(() => clienteSelezionato = s),
-                  fieldViewBuilder: (context, controller, focusNode, onSubmitted) => TextField(
-                    controller: controller, focusNode: focusNode,
-                    decoration: const InputDecoration(labelText: "Cerca Cliente", border: OutlineInputBorder()),
-                  ),
-                ),
-
-                const SizedBox(height: 15),
-                DropdownButtonFormField<String>(
-                  decoration: const InputDecoration(labelText: "Tipo Intervento", border: OutlineInputBorder()),
-                  items: ["Installazione", "Sopralluogo", "Manutenzione"].map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
-                  onChanged: (v) => tipoScelto = v,
-                ),
-                
-                const SizedBox(height: 15),
-                Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-                  OutlinedButton(onPressed: () async {
-                    final t = await showTimePicker(context: context, initialTime: oraInizio);
-                    if (t != null) setModalState(() => oraInizio = t);
-                  }, child: Text("Dalle: ${oraInizio.format(context)}")),
-                  OutlinedButton(onPressed: () async {
-                    final t = await showTimePicker(context: context, initialTime: oraFine);
-                    if (t != null) setModalState(() => oraFine = t);
-                  }, child: Text("Alle: ${oraFine.format(context)}")),
-                ]),
-
-                const SizedBox(height: 15),
-                TextField(controller: descController, decoration: const InputDecoration(labelText: "Note/Descrizione", border: OutlineInputBorder())),
-                
-                const SizedBox(height: 25),
-                SizedBox(width: double.infinity, child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[900], padding: const EdgeInsets.all(15)),
-                  onPressed: () async {
-                    if (clienteSelezionato == null) return;
-                    DateTime inizio = DateTime(_dataSelezionata.year, _dataSelezionata.month, _dataSelezionata.day, oraInizio.hour, oraInizio.minute);
-                    DateTime fine = DateTime(_dataSelezionata.year, _dataSelezionata.month, _dataSelezionata.day, oraFine.hour, oraFine.minute);
-
-                    await FirebaseFirestore.instance.collection('interventi').add({
-                      'cliente': clienteSelezionato,
-                      'tipo': tipoScelto,
-                      'descrizione': descController.text,
-                      'staff': operatoriScelti,
-                      'dataInizio': inizio,
-                      'dataFine': fine,
-                    });
-                    Navigator.pop(context);
-                  },
-                  child: const Text("SALVA IN AGENDA", style: TextStyle(color: Colors.white)),
-                )),
-                const SizedBox(height: 20),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _AppointmentDataSource extends CalendarDataSource {
-  _AppointmentDataSource(List<Appointment> source) { appointments = source; }
 }
