@@ -1,3 +1,5 @@
+import 'package:logging/logging.dart';
+
 // ignore_for_file: unused_import
 
 import 'dart:io';
@@ -18,7 +20,9 @@ import '../widgets/main_drawer.dart';
 import 'clienti_page.dart'; // Importato per usare il modulo cliente
 import 'package:intl/date_symbol_data_local.dart';
 import 'interventi_page.dart'
- show mostraModuloCliente;
+    show mostraModuloCliente;
+
+final _log = Logger('InterventiPage');
 
 class InterventiPage extends StatefulWidget {
   const InterventiPage({super.key});
@@ -47,15 +51,17 @@ class _InterventiPageState extends State<InterventiPage> {
 
   // Carica le impostazioni degli stati da Firestore
   List<Map<String, dynamic>> _stati = [];
-  List<String> _tipologie = [];
   List<Map<String, dynamic>> _staff = [];
 
   @override
   void initState() {
     super.initState();
+    Logger.root.level = Level.ALL;
+    Logger.root.onRecord.listen((record) {
+      print('${record.level.name}: ${record.time}: ${record.message}');
+    });
     initializeDateFormatting('it_IT', null);
     _caricaStati();
-    _caricaTipologie();
     _caricaStaff();
     _caricaUtenteCorrente();
   }
@@ -67,17 +73,28 @@ class _InterventiPageState extends State<InterventiPage> {
 
   Future<void> _caricaUtenteCorrente() async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+    if (user == null) {
+      _log.warning("Nessun utente autenticato. Utilizzo utente Ospite di fallback.");
+      if (mounted) {
+        setState(() {
+          _currentUser = {'nome': 'Ospite', 'ruolo': 'tecnico'};
+        });
+      }
+      return;
+    }
 
     try {
       final doc = await FirebaseFirestore.instance.collection('staff').where('email', isEqualTo: user.email).limit(1).get();
-      if (doc.docs.isNotEmpty) {
+      if (doc.docs.isNotEmpty && mounted) {
         setState(() {
           _currentUser = doc.docs.first.data();
         });
+      } else if (mounted) {
+        _log.warning("Utente ${user.email} non trovato nella collezione 'staff'. Utilizzo utente Ospite di fallback.");
+        setState(() => _currentUser = {'nome': 'Ospite', 'ruolo': 'tecnico'});
       }
     } catch (e) {
-      debugPrint("Errore nel caricamento dello staff: $e");
+      _log.severe("Errore nel caricamento dello staff: $e");
       setState(() { _currentUser = {'nome': 'Ospite', 'ruolo': 'tecnico'}; });
     }
   }
@@ -91,20 +108,7 @@ class _InterventiPageState extends State<InterventiPage> {
         });
       }
     } catch (e) {
-      debugPrint("Errore caricamento stati: $e");
-    }
-  }
-
-  Future<void> _caricaTipologie() async {
-    try {
-      final doc = await FirebaseFirestore.instance.collection('impostazioni').doc('commesse').get();
-      if (doc.exists && doc.data() != null) {
-        setState(() {
-          _tipologie = List<String>.from(doc.data()!['tipologie'] ?? []);
-        });
-      }
-    } catch (e) {
-      debugPrint("Errore caricamento tipologie: $e");
+      _log.severe("Errore caricamento stati: $e");
     }
   }
 
@@ -115,7 +119,7 @@ class _InterventiPageState extends State<InterventiPage> {
         _staff = snapshot.docs.map((doc) => doc.data()).toList();
       });
     } catch (e) {
-      debugPrint("Errore caricamento staff: $e");
+      _log.severe("Errore caricamento staff: $e");
     }
   }
 
@@ -213,10 +217,16 @@ class _InterventiPageState extends State<InterventiPage> {
           .orderBy('dataInizio')
           .snapshots(),
       builder: (context, snapshot) {
+        _log.info("StreamBuilder interventi: connectionState=${snapshot.connectionState}, hasError=${snapshot.hasError}, hasData=${snapshot.hasData}");
+        if (_currentUser == null) {
+          // Mostra un caricamento finché i dati dell'utente non sono pronti.
+          return const Center(child: CircularProgressIndicator());
+        }
+        
         // TEST 3: Verifica Permessi e Indici Firestore
         if (snapshot.hasError) {
-          debugPrint("--- ERRORE STREAM INTERVENTI ---");
-          debugPrint(snapshot.error.toString());
+          _log.severe("--- ERRORE STREAM INTERVENTI ---");
+          _log.severe(snapshot.error.toString());
           return Center(child: Text("Errore nel caricamento: ${snapshot.error}"));
         }
 
@@ -230,10 +240,6 @@ class _InterventiPageState extends State<InterventiPage> {
         final allDocs = snapshot.data!.docs;
 
         // TEST 1: Verifica il Blocco Logico di _currentUser
-        if (_currentUser == null) {
-          // Mostra un caricamento finché i dati dell'utente non sono pronti.
-          return const Center(child: CircularProgressIndicator());
-        }
         final mioNome = _currentUser!['nome'];
         final mioRuolo = _currentUser!['ruolo'];
 
@@ -271,7 +277,6 @@ class _InterventiPageState extends State<InterventiPage> {
       },
     );
   }
-
   Widget _buildInterventoCard(DocumentSnapshot doc) {
     final d = doc.data() as Map<String, dynamic>;
     final dataInizio = (d['dataInizio'] as Timestamp?)?.toDate();
@@ -462,7 +467,7 @@ class _InterventiPageState extends State<InterventiPage> {
       await ref.putFile(File(image.path));
       String url = await ref.getDownloadURL();
       await _aggiungiPost(idDoc, tecnico, tipo: 'FOTO', url: url, testo: 'Foto dal cantiere');
-    } catch (e) { debugPrint(e.toString()); }
+    } catch (e) { _log.severe(e.toString()); }
   }
 
   void _confermaEliminazione(BuildContext context, String id) {
@@ -621,7 +626,7 @@ class _ModuloInterventoPageState extends State<ModuloInterventoPage> {
   }
 
   Future<void> _caricaDatiSupporto() async {
-    try { // FIX: Rimosso debugPrint
+    try { // FIX: Rimosso _log.severe
       final commesseDoc = await FirebaseFirestore.instance.collection('impostazioni').doc('commesse').get();
       if (commesseDoc.exists && commesseDoc.data() != null) {
         _stati = List<Map<String, dynamic>>.from(commesseDoc.data()!['stati'] ?? []);
@@ -646,7 +651,7 @@ class _ModuloInterventoPageState extends State<ModuloInterventoPage> {
       if (_stati.firstWhereOrNull((s) => s['nome'] == statoS) == null) {
         statoS = _stati.isNotEmpty ? _stati.first['nome'] as String : "Programmato";
       }
-    } catch (e) { debugPrint("Errore caricamento dati di supporto: $e"); }
+    } catch (e) { _log.severe("Errore caricamento dati di supporto: $e"); }
     finally { if(mounted) setState(() => isLoading = false); }
   }
 
@@ -684,7 +689,7 @@ class _ModuloInterventoPageState extends State<ModuloInterventoPage> {
         }
       }
     } catch (e) {
-      debugPrint("Errore salvataggio intervento: $e");
+      _log.severe("Errore salvataggio intervento: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Errore: $e")));
       }
@@ -762,7 +767,7 @@ class _ModuloInterventoPageState extends State<ModuloInterventoPage> {
         final data = json.decode(response.body);
         if (data['status'] == 'OK') return List<Map<String, dynamic>>.from(data['predictions'] as List);
       }
-    } catch (e) { debugPrint("Errore suggerimenti indirizzo: $e"); }
+    } catch (e) { _log.severe("Errore suggerimenti indirizzo: $e"); }
     return [];
   }
 
@@ -783,7 +788,7 @@ class _ModuloInterventoPageState extends State<ModuloInterventoPage> {
           return {'via': '$route, $streetNumber'.replaceAll(RegExp(r'^, |,$'), ''),'citta': components.firstWhere((c) => c['types'].contains('locality'), orElse: () => {'long_name': ''})['long_name']};
         }
       }
-    } catch (e) { debugPrint("Errore dettagli luogo: $e"); }
+    } catch (e) { _log.severe("Errore dettagli luogo: $e"); }
     return {};
   }
 
@@ -831,11 +836,18 @@ class _ModuloInterventoPageState extends State<ModuloInterventoPage> {
                 ),
                 suggestionsCallback: (pattern) async {
                   if (pattern.isEmpty) return const <DocumentSnapshot>[];
-                  final upperPattern = pattern.toUpperCase();
-                  final cognomeQuery = FirebaseFirestore.instance.collection('clienti').where('cognome', isGreaterThanOrEqualTo: upperPattern).where('cognome', isLessThanOrEqualTo: '$upperPattern\uf8ff').get();
-                  final nomeQuery = FirebaseFirestore.instance.collection('clienti').where('nome', isGreaterThanOrEqualTo: upperPattern).where('nome', isLessThanOrEqualTo: '$upperPattern\uf8ff').get();
-                  final results = await Future.wait([cognomeQuery, nomeQuery]);
-                  return [...results[0].docs, ...results[1].docs].toSet().toList();
+                  final lowerPattern = pattern.toLowerCase();
+                  try {
+                    final cognomeQuery = FirebaseFirestore.instance.collection('clienti').where('cognome_lowercase', isGreaterThanOrEqualTo: lowerPattern).where('cognome_lowercase', isLessThanOrEqualTo: '$lowerPattern\uf8ff').get();
+                    final nomeQuery = FirebaseFirestore.instance.collection('clienti').where('nome', isGreaterThanOrEqualTo: pattern).where('nome', isLessThanOrEqualTo: '$pattern\uf8ff').get();
+                    final codiceQuery = FirebaseFirestore.instance.collection('clienti').where('codice', isEqualTo: pattern).get();
+                    
+                    final results = await Future.wait([cognomeQuery, nomeQuery, codiceQuery]);
+                    return [...results[0].docs, ...results[1].docs, ...results[2].docs].toSet().toList();
+                  } catch (e) {
+                    _log.severe("Errore query suggerimenti cliente (verificare indici Firestore): $e");
+                    return const <DocumentSnapshot>[];
+                  }
                 },
                 itemBuilder: (context, suggestion) {
                   final cliente = suggestion.data() as Map<String, dynamic>;

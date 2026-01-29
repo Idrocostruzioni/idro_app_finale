@@ -26,7 +26,7 @@ class _ClientiPageState extends State<ClientiPage> {
   // La chiave API è visibile nel codice sorgente. Per la produzione, è FONDAMENTALE
   // proteggerla utilizzando variabili d'ambiente (es. con il pacchetto flutter_dotenv)
   // o un servizio di backend per evitare abusi e costi imprevisti.
-  final String _googleApiKey = "INSERISCI_LA_TUA_CHIAVE_API_GOOGLE_QUI";
+  final String _googleApiKey = "AIzaSyCN0k2Hvyn51Buz7zlkZrqsnllSygQtTuI";
   
   // Variabili per le configurazioni caricate da Firestore
   Map<String, dynamic> _configIntegrazioni = {};
@@ -303,9 +303,9 @@ class _ClientiPageState extends State<ClientiPage> {
             Map<String, dynamic> item = entry.value;
             return Row(
               children: [
-                Expanded(flex: 2, child: _input(TextEditingController(text: item['label']), "Etichetta", Icons.label_outline, abilitato: abilitato, onChanged: (val) => item['label'] = val)),
+                Flexible(flex: 2, child: _input(TextEditingController(text: item['label']), "Etichetta", Icons.label_outline, abilitato: abilitato, onChanged: (val) => item['label'] = val)),
                 const SizedBox(width: 8),
-                Expanded(flex: 3, child: _input(TextEditingController(text: item[chiaveValore]), "Valore", icona, abilitato: abilitato, onChanged: (val) => item[chiaveValore] = val)),
+                Flexible(flex: 3, child: _input(TextEditingController(text: item[chiaveValore]), "Valore", icona, abilitato: abilitato, onChanged: (val) => item[chiaveValore] = val)),
                 if (lista.length > 1) IconButton(icon: const Icon(Icons.remove_circle_outline, color: Colors.red), onPressed: () => setModalState(() => lista.removeAt(idx))),
               ],
             );
@@ -319,8 +319,9 @@ class _ClientiPageState extends State<ClientiPage> {
     if (lista.length <= 1) return const SizedBox.shrink(); // Non mostrare se c'è solo un'opzione
     return Padding(
       padding: const EdgeInsets.only(top: 10),
-      child: DropdownButtonFormField<Map<String, dynamic>>(
+      child: DropdownButtonFormField<Map<String, dynamic>>( // FIX: 'value' is deprecated.
         value: valoreAttivo,
+        isExpanded: true, // FIX: Previene l'overflow con testi lunghi
         decoration: InputDecoration(labelText: titolo, prefixIcon: Icon(icona), border: const OutlineInputBorder()),
         items: lista.map((item) => DropdownMenuItem(
           value: item,
@@ -338,7 +339,7 @@ class _ClientiPageState extends State<ClientiPage> {
     );
   }
 
-  String _getDropdownText(Map<String, dynamic>? item) {
+  String _getDropdownText(Map<String, dynamic> item) {
     if (item == null) return '';
     final label = item['label'] ?? '';
     if (item.containsKey('numero')) return "$label: ${item['numero'] ?? ''}";
@@ -637,7 +638,7 @@ class __ModuloClienteState extends State<_ModuloCliente> {
 
     telefoni = dati?['telefoni'] != null ? List<Map<String, dynamic>>.from(dati!['telefoni']) : (dati?['tel'] != null ? [{'label': 'telefono cliente', 'numero': dati!['tel']}] : []);
     emails = dati?['emails'] != null ? List<Map<String, dynamic>>.from(dati!['emails']) : (dati?['mail'] != null ? [{'label': 'email principale', 'email': dati!['mail']}] : []);
-    indirizzi = dati?['indirizzi'] != null ? List<Map<String, dynamic>>.from(dati!['indirizzi']) : (dati?['via'] != null ? [{'label': 'indirizzo intervento', 'via': dati?['via'], 'citta': dati!['citta'] ?? '', 'cap': dati?['cap'] ?? ''}] : []);
+    indirizzi = dati?['indirizzi'] != null ? List<Map<String, dynamic>>.from(dati!['indirizzi']) : (dati?['via'] != null ? [{'label': 'indirizzo intervento', 'via': dati!['via'], 'citta': dati!['citta'] ?? '', 'cap': dati!['cap'] ?? ''}] : []);
 
     telefonoAttivo = telefoni.isNotEmpty ? telefoni.first : null;
     emailAttiva = emails.isNotEmpty ? emails.first : null;
@@ -861,9 +862,10 @@ class __ModuloClienteState extends State<_ModuloCliente> {
   Widget _buildSelettoreAttivo(String titolo, Map<String, dynamic>? valoreAttivo, List<Map<String, dynamic>> lista, IconData icona, Function(Map<String, dynamic>?) onChanged) {
     if (lista.length <= 1) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.only(top: 10), // FIX: 'value' is deprecated.
       child: DropdownButtonFormField<Map<String, dynamic>>(
         value: valoreAttivo,
+        isExpanded: true, // FIX: Previene l'overflow con testi lunghi
         decoration: InputDecoration(labelText: titolo, prefixIcon: Icon(icona), border: const OutlineInputBorder()),
         items: lista.map((item) => DropdownMenuItem(
           value: item,
@@ -918,12 +920,12 @@ class __ModuloClienteState extends State<_ModuloCliente> {
   }
 
   void _dialogInvioMessaggio(BuildContext context, Map<String, dynamic> datiCliente, Map<String, dynamic> telefono, String titolo, String testoTemplate) {
-    String testoPersonalizzato = testoTemplate
-      .replaceAll('[NOME_CLIENTE]', datiCliente['nome'] as String? ?? '')
-      .replaceAll('[COGNOME_CLIENTE]', datiCliente['cognome'] as String? ?? '')
-      .replaceAll('[CODICE_CLIENTE]', datiCliente['codice'] as String? ?? '')
-      .replaceAll('[VIA_CLIENTE]', datiCliente['via'] as String? ?? '')
-      .replaceAll('[CITTA_CLIENTE]', datiCliente['citta'] as String? ?? '');
+    String testoPersonalizzato = testoTemplate.replaceAll('[NOME_CLIENTE]',
+        (datiCliente['nome'] as String?) ?? '').replaceAll('[COGNOME_CLIENTE]',
+        (datiCliente['cognome'] as String?) ?? '').replaceAll('[CODICE_CLIENTE]',
+        (datiCliente['codice'] as String?) ?? '').replaceAll('[VIA_CLIENTE]',
+        (datiCliente['via'] as String?) ?? '').replaceAll('[CITTA_CLIENTE]',
+        (datiCliente['citta'] as String?) ?? '');
 
     final testoCtrl = TextEditingController(text: testoPersonalizzato);
 
@@ -971,7 +973,7 @@ class __ModuloClienteState extends State<_ModuloCliente> {
   }
 
   void _dialogInvioEmail(BuildContext context, Map<String, dynamic> datiCliente, Map<String, dynamic> email, String titolo, String oggettoTemplate, String testoTemplate) {
-    String personalizza(String testo) => testo.replaceAll('[NOME_CLIENTE]', datiCliente['nome'] as String? ?? '').replaceAll('[COGNOME_CLIENTE]', datiCliente['cognome'] as String? ?? '').replaceAll('[CODICE_CLIENTE]', datiCliente['codice'] as String? ?? '').replaceAll('[VIA_CLIENTE]', datiCliente['via'] as String? ?? '').replaceAll('[CITTA_CLIENTE]', datiCliente['citta'] as String? ?? '');
+    String personalizza(String testo) => testo.replaceAll('[NOME_CLIENTE]', (datiCliente['nome'] as String?) ?? '').replaceAll('[COGNOME_CLIENTE]', (datiCliente['cognome'] as String?) ?? '').replaceAll('[CODICE_CLIENTE]', (datiCliente['codice'] as String?) ?? '').replaceAll('[VIA_CLIENTE]', (datiCliente['via'] as String?) ?? '').replaceAll('[CITTA_CLIENTE]', (datiCliente['citta'] as String?) ?? '');
     final oggettoCtrl = TextEditingController(text: personalizza(oggettoTemplate));
     final testoCtrl = TextEditingController(text: personalizza(testoTemplate));
     showDialog(context: context, builder: (c) => AlertDialog(title: Text(titolo), content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [TextField(controller: oggettoCtrl, decoration: const InputDecoration(labelText: "Oggetto")), const SizedBox(height: 15), TextField(controller: testoCtrl, maxLines: 8, decoration: const InputDecoration(labelText: "Corpo del messaggio", border: OutlineInputBorder()))])), actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text("Annulla")), ElevatedButton.icon(icon: const Icon(Icons.send), label: const Text("Apri e Invia"), onPressed: () {widget.onInviaTramiteMailto(email['email'], oggettoCtrl.text, testoCtrl.text); Navigator.pop(c);})]));
@@ -1011,7 +1013,7 @@ class __ModuloClienteState extends State<_ModuloCliente> {
                         controller.text = item['via'] ?? '';
                         return _input(controller, "Via e Civico", Icons.home, abilitato: abilitato, onChanged: (value) { if (focusNode.hasFocus) item['via'] = value; }, focusNode: focusNode);
                       },
-                      suggestionsCallback: abilitato ? widget.onGetSuggestions : (pattern) async => [],
+                      suggestionsCallback: (pattern) => abilitato ? widget.onGetSuggestions(pattern) : Future.value(<Map<String, dynamic>>[]),
                       onSelected: (suggestion) async {
                         final placeId = suggestion['place_id'];
                         if (placeId != null) {
